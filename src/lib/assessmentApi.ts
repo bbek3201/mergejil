@@ -95,11 +95,18 @@ export async function generateProfile(
   const headers = authHeaders();
   if (!headers) return { error: 'Нэвтэрсний дараа профайл үүснэ.' };
 
+  // Хоёр Gemini дуудалт (мэргэжил + сургууль) хамтдаа ихэвчлэн 90 секундэд
+  // багтдаг. Сүлжээ/сервер зогсох тохиолдолд хэрэглэгч мөнхөд хүлээхгүйн
+  // тулд client талд хатуу хугацааны хязгаар тавина.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+
   try {
     const res = await fetch('/api/profile/generate', {
       method: 'POST',
       headers,
       body: JSON.stringify({ force }),
+      signal: controller.signal,
     });
     const data = await res.json().catch(() => null);
 
@@ -110,7 +117,15 @@ export async function generateProfile(
       };
     }
     return { profile: data.profile as CareerProfile };
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return {
+        error:
+          'AI профайл удаж байна (2 минутаас хэтэрлээ). Түр хүлээгээд "Дахин оролдох" дарна уу.',
+      };
+    }
     return { error: 'Сүлжээний алдаа — дахин оролдоно уу.' };
+  } finally {
+    clearTimeout(timeout);
   }
 }

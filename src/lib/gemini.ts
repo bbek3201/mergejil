@@ -72,7 +72,18 @@ export function schemaSkeleton(schema: JsonSchema): unknown {
 const sleep = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-/** 429/503 үед Gemini-ийн зөвлөсөн хугацааг уншина (секундээр). */
+/**
+ * 429/503 үед Gemini-ийн зөвлөсөн хугацааг уншина (секундээр).
+ *
+ * Хуучин хувилбар зөвлөсөн хугацааг (60 сек хүртэл) бүтнээр нь хүлээдэг
+ * байсан бөгөөд 4 удаа хүртэл дахин оролддог — нэг дуудалт онолын хувьд
+ * 4×70с ≈ 4.5 мин үргэлжилж болдог байсан. `generateCareerProfile` дотор
+ * ийм хоёр дуудалт дараалан хийгддэг тул хэрэглэгч 99%-д "гацсан" мэт харагдаж,
+ * Vercel дээр ч `maxDuration`-аас хэтэрч функц таслагддаг байсан.
+ *
+ * Одоо богино, тогтмол хязгаартай хүлээлт хийж, удахгүй бол ХУРДАН,
+ * ТОДОРХОЙ алдаагаар зогсооно — клиент "Дахин оролдох" товчоор шийднэ.
+ */
 function retryDelaySeconds(payload: unknown, attempt: number): number {
   const details = (payload as { error?: { details?: unknown[] } })?.error
     ?.details;
@@ -86,10 +97,8 @@ function retryDelaySeconds(payload: unknown, attempt: number): number {
       )
     : undefined;
   const advised = Number.parseFloat(retryInfo?.retryDelay ?? '');
-  // Үнэгүй квот минутанд 20 хүсэлт тул зөвлөсөн хугацаа 60 сек хүрч болно.
-  if (Number.isFinite(advised) && advised > 0) return Math.min(advised + 2, 70);
-  // Зөвлөмж байхгүй бол экспоненциалаар нэмэгдүүлнэ.
-  return Math.min(2 ** attempt * 10, 70);
+  if (Number.isFinite(advised) && advised > 0) return Math.min(advised, 10);
+  return Math.min(2 ** attempt * 3, 10);
 }
 
 /**
@@ -149,9 +158,11 @@ ${JSON.stringify(schemaSkeleton(schema), null, 2)}`,
   } | null = null;
   let status = 0;
 
-  // Үнэгүй квот дээр 429/503 нь түр зуурын байдаг тул хэд оролдоно.
+  // Богино хугацаанд 1 удаа дахин оролдоно (нийт ≤20 секунд хүлээнэ) — Vercel-ийн
+  // хугацааны хязгаарт багтаах, хэрэглэгчийг мөнхөд хүлээлгэхгүй байхын тулд.
   let attempt = 0;
-  while (attempt < 4) {
+  const maxAttempts = 2;
+  while (attempt < maxAttempts) {
     // Зарим модель (3.7-flash г.м) header-ийн түлхүүрийг таньдаггүй тул
     // `?key=` query параметрээр дамжуулна.
     const response = await fetch(
@@ -182,7 +193,7 @@ ${JSON.stringify(schemaSkeleton(schema), null, 2)}`,
     }
 
     const retryable = status === 429 || status === 503;
-    if (!retryable || attempt === 3) {
+    if (!retryable || attempt === maxAttempts - 1) {
       const detail =
         typeof payload?.error?.message === 'string'
           ? payload.error.message

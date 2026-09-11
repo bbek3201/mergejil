@@ -98,4 +98,25 @@ describe('generateJson', () => {
       generateJson({ prompt: 'Хэл', schema: SCHEMA }),
     ).rejects.toThrow('Permission denied');
   });
+
+  it('gives up quickly on repeated 429s instead of retrying for minutes', async () => {
+    jest.useFakeTimers();
+    fetchMock.mockResolvedValue(errorResponse(429, 'Quota exceeded'));
+
+    const promise = generateJson({ prompt: 'Хэл', schema: SCHEMA });
+    // "unhandledRejection" болохоос сэргийлж эрт catch хийнэ (fake timer-тэй
+    // async assertion-ийн ердийн зөвлөмж).
+    const assertion = expect(promise).rejects.toThrow('Quota exceeded');
+
+    // Богино хугацааны хүлээлт (≤10 сек) л явна — өмнөх 70 секундийн
+    // зөвлөмжийг дагахгүй, өдгөө минутуудаар биш секундүүдээр хязгаарлана.
+    await jest.advanceTimersByTimeAsync(10_000);
+    await assertion;
+
+    // Дор хаяж 1 удаа (анхны оролдлого) дахин оролдоно, гэхдээ хуучин шиг
+    // 4 удаа биш — network дуудалт хэт олон удаа хийгдээгүй эсэхийг батална.
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2);
+
+    jest.useRealTimers();
+  });
 });

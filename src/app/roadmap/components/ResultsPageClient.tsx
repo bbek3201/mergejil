@@ -28,13 +28,18 @@ const TABS = [
   { key: 'roadmap', label: 'Roadmap', icon: '🗺️' },
 ] as const;
 
-/** Хоёр Gemini дуудалт дунджаар ~75 секунд авдаг — ахицыг түүнээс тооцно. */
-const ESTIMATED_SECONDS = 75;
+/**
+ * Хоёр Gemini дуудалт (retry тохиолдоогүй үед) ихэвчлэн ~45–60 секундэд
+ * багтдаг. `assessmentApi.ts` дахь client timeout 120 секундэд тавигдсан тул
+ * түүнээс цааш энэ дэлгэц харагдахгүй — эсвэл алдаа, эсвэл үр дүн гарна.
+ */
+const ESTIMATED_SECONDS = 55;
+const CLIENT_TIMEOUT_SECONDS = 120;
 
 const GENERATING_STAGES = [
-  { until: 25, text: 'Тестийн үр дүнг шинжилж байна…' },
-  { until: 55, text: 'Тохирох мэргэжлүүдийг сонгож байна…' },
-  { until: 80, text: 'Их сургууль, суралцах замыг гаргаж байна…' },
+  { until: 20, text: 'Тестийн үр дүнг шинжилж байна…' },
+  { until: 45, text: 'Тохирох мэргэжлүүдийг сонгож байна…' },
+  { until: 70, text: 'Их сургууль, суралцах замыг гаргаж байна…' },
   { until: Number.POSITIVE_INFINITY, text: 'Профайлыг бүрдүүлж байна…' },
 ];
 
@@ -46,6 +51,7 @@ const GeneratingScreen = ({ seconds }: { seconds: number }) => {
     Math.round((seconds / ESTIMATED_SECONDS) * 100),
   );
   const remaining = Math.max(0, ESTIMATED_SECONDS - seconds);
+  const isSlow = seconds > ESTIMATED_SECONDS + 20;
   const stage =
     GENERATING_STAGES.find((item) => percent < item.until) ??
     GENERATING_STAGES[GENERATING_STAGES.length - 1];
@@ -73,15 +79,25 @@ const GeneratingScreen = ({ seconds }: { seconds: number }) => {
           {stage.text}
         </p>
         <p className="mt-2 text-sm text-slate-500">
-          {remaining > 0
-            ? `Ойролцоогоор ${remaining} секунд үлдлээ`
-            : 'Хэдхэн секунд үлдлээ'}{' '}
+          {isSlow
+            ? 'AI үйлчилгээ ердийнөөс удааширч байна'
+            : remaining > 0
+              ? `Ойролцоогоор ${remaining} секунд үлдлээ`
+              : 'Хэдхэн секунд үлдлээ'}{' '}
           · {seconds} сек болсон
         </p>
-        <p className="mt-4 text-sm text-slate-400">
-          Хуудсыг хаахгүй байгаарай — профайл хадгалагдсаны дараа дахин
-          үүсгэх шаардлагагүй.
-        </p>
+        {isSlow ? (
+          <p className="mt-4 text-sm text-amber-600">
+            {CLIENT_TIMEOUT_SECONDS - seconds > 0
+              ? `${CLIENT_TIMEOUT_SECONDS - seconds} секундэд хариу ирэхгүй бол алдаа гарч, "Дахин оролдох" товч гарна.`
+              : 'Удахгүй алдаа гарч, "Дахин оролдох" товч гарна.'}
+          </p>
+        ) : (
+          <p className="mt-4 text-sm text-slate-400">
+            Хуудсыг хаахгүй байгаарай — профайл хадгалагдсаны дараа дахин
+            үүсгэх шаардлагагүй.
+          </p>
+        )}
       </div>
     </div>
   );
