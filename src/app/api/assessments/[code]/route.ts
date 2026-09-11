@@ -88,7 +88,7 @@ export async function POST(
     where: { sessionId: session.id, module: { code: { in: [...MODULE_CODES] } } },
     select: { module: { select: { code: true } } },
   });
-  const done = new Set(completedCodes.map((row) => row.module.code));
+  const done = new Set(completedCodes.map((row: (typeof completedCodes)[number]) => row.module.code));
   if (MODULE_CODES.every((item) => done.has(item))) {
     await db.assessmentSession.update({
       where: { id: session.id },
